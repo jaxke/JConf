@@ -59,6 +59,8 @@ public class Jconf {
         for (String element : elements) {
             if (element.equals(""))
                 continue;
+            if (element.charAt(0) == '/' && element.charAt(1) == '/')
+                continue;
             if (element.contains(delimiter)) {
                 String key = element.split(delimiter)[0].trim();
                 String val = element.split(delimiter)[1].trim();
