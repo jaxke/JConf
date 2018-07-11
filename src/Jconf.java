@@ -91,7 +91,8 @@ public class Jconf {
         // TODO all numeric values are converted to Double
         // Convert to Double
         try {
-            return Double.parseDouble(item);
+            if (item.contains("."))
+                return Double.parseDouble(item);
         } catch (NumberFormatException nfe){
             ;
         }

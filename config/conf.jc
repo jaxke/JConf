@@ -1,8 +1,10 @@
 {General}
 FileIO = 1
+Limit = 1.8
 Bandwidth = 100M
 People = [jonne, veikko]
 
 {Not so general}
 Name= pena
-Logged = True
+//Logged = True
+UID = 31541
