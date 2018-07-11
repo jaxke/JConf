@@ -86,6 +86,7 @@ public class Jconf {
             return arr;
 
         }
+        // TODO all numeric values are converted to Double
         // Convert to Double
         try {
             return Double.parseDouble(item);
