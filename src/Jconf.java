@@ -1,19 +1,26 @@
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
 public class Jconf {
-    HashMap configMap;
+    private HashMap configMap;
+    private String confFile;
+    private String confBackupFile = "config/conf_backup";
+
+    public HashMap get(){
+        return configMap;
+    }
+
     public Jconf(String confFile){
+        this.confFile = confFile;
         String conf = readConfigFile(confFile);
         if (conf.equals(""))
             configMap = null;
-        configMap = parseConfig(conf);
-        System.out.println(Arrays.toString(configMap.entrySet().toArray()));
+        this.configMap = parseConfig(conf);
     }
     /*
      * CATEGORY - Find lines that have curly braces(Ie. "{General}") and take store their names
@@ -84,11 +91,11 @@ public class Jconf {
         }
         // Convert to array. Format must be {item1, item2, item3} or {item}
         if (item.charAt(0) == '[' && item.charAt(item.length() - 1) == ']'){
+            // Split and strip
             String arr[] = item.substring(1, item.length() - 1).split("\\s*,\\s*");
             return arr;
 
         }
-        // TODO all numeric values are converted to Double
         // Convert to Double
         try {
             if (item.contains("."))
@@ -128,5 +135,69 @@ public class Jconf {
             System.out.println("IO Exception caught. Check your permissions on file " + file + ".");
             return "";
         }
+    }
+
+    // Modify a configuration item's value
+    public int set(String category, String element, String value){
+        if (makeBackup() != 0)
+            return 1;
+        String brTmp = "config/br_tmp";
+        BufferedReader br = null;
+        BufferedWriter bw = null;
+
+        try {
+            br = new BufferedReader(new FileReader(this.confFile));
+            bw = new BufferedWriter(new FileWriter(brTmp));
+            String line;
+            while ((line = br.readLine()) != null){
+                if (line.contains("{" + category + "}")){
+                    bw.write(line + "\n");
+                    while((line = br.readLine()) != null) {
+                        if (line.contains("{") && line.contains("}")) {
+                            // Next category encountered, stop looking for key
+                            break;
+                        }
+                        if (line.startsWith(element + " =") || line.startsWith(element + "=")) {
+                            System.out.println("Key found");
+                            line = element + " = " + value;
+                        }
+                        bw.write(line + "\n");
+                    }
+                }
+                bw.write(line + "\n");
+            }
+        } catch (FileNotFoundException fnfe) {
+            System.out.println("File not found! Reverting to backup.");
+            revertToBackup();
+            fnfe.printStackTrace();
+            return 1;
+        } catch (IOException e) {
+            System.out.println("IO Error. Reverting to backup.");
+            revertToBackup();
+            e.printStackTrace();
+            return 1;
+        }
+        return 0;
+    }
+
+    // Create a backup of the config file before writing to it.
+    private int makeBackup(){
+        try {
+            Files.copy(Paths.get(this.confFile), Paths.get(this.confBackupFile), StandardCopyOption.REPLACE_EXISTING);
+            return 0;
+        } catch(IOException ioe){
+            System.out.println("Could not make a backup of the configuration.");
+            return 1;
+        }
+    }
+
+    // Overwrite conf file with the latest backup.
+    private void revertToBackup(){
+        try {
+            Files.copy(Paths.get(this.confBackupFile), Paths.get(this.confFile), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 }
