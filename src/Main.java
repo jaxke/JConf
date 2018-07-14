@@ -5,7 +5,7 @@ import java.util.HashMap;
 
 public class Main {
     public static void main(String[] args){
-        String confFile = "aconfig/conf.jc";
+        String confFile = "config/conf.jc";
         Jconf jc;
         try {
             jc = new Jconf(confFile);

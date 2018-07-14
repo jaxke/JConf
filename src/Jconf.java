@@ -21,7 +21,11 @@ public class Jconf {
     }
 
     Object getVal(String category, String key) {
-        return ((HashMap<String, Object>) this.configMap.get(category)).get(key);
+        try {
+            return ((HashMap<String, Object>) this.configMap.get(category)).get(key);
+        } catch(NullPointerException npe){
+            throw new IllegalArgumentException("\"" + key + "\" not found under \"" + category + "\"");
+        }
     }
 
     // Ambiguous "Exception" because the exc. type is resolved before hand.
@@ -45,8 +49,6 @@ public class Jconf {
             logException(e);
             throw e;
         }
-        if (conf.equals(""))    // IOEx., NullPointerEx. or FileNotFoundEx. was thrown.
-            System.exit(1);
         this.configMap = parseConfig(conf);
     }
     /*
@@ -67,6 +69,9 @@ public class Jconf {
             String openingBrace[] = line.split("\\{");
             String cat = openingBrace[1].split("}")[0];
             categories.add(cat);
+        }
+        if (categories.size() == 0){
+            throw new NullPointerException("Configuration file is not of supported format.");
         }
         for (int i = 0; i < categories.size(); i++){
             String aCategory[];
