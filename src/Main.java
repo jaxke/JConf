@@ -5,10 +5,20 @@ import java.util.HashMap;
 
 public class Main {
     public static void main(String[] args){
-        String confFile = "config/conf.jc";
-        Jconf jc = new Jconf(confFile);
+        String confFile = "aconfig/conf.jc";
+        Jconf jc;
+        try {
+            jc = new Jconf(confFile);
+        } catch (Exception e){
+            e.printStackTrace();
+            return;
+        }
         HashMap conf = jc.get();
-        System.out.println(Arrays.asList(jc.get()));
-        jc.set("General", "FileIO", "0");
+        try {
+            jc.set("General", "Limit", "6");
+        } catch (Exception e){
+            ;
+        }
+        System.out.println(jc.getVal("Not so general", "Balance"));
     }
 }

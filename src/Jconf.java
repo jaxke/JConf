@@ -5,25 +5,52 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.logging.FileHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Jconf {
-    private HashMap configMap;
-    private String confFile;
-    private String confBackupFile = "config/conf_backup";
+    private HashMap configMap;  // Configuration object de-serialized from the file.
+    private String confFile;    // Absolute path to configuration file.
+    private String confBackupFile;  // Abs path to the backup file
 
-    public HashMap get(){
+    // TODO This method is not needed?
+    HashMap get(){
         return configMap;
     }
 
-    public Jconf(String confFile){
-        this.confFile = confFile;
-        String conf = readConfigFile(confFile);
-        if (conf.equals(""))
-            configMap = null;
+    Object getVal(String category, String key) {
+        return ((HashMap<String, Object>) this.configMap.get(category)).get(key);
+    }
+
+    // Ambiguous "Exception" because the exc. type is resolved before hand.
+    public Jconf(String confFile) throws Exception {
+        // Parameter was abs path
+        if (confFile.charAt(0) == '/')
+            this.confFile = confFile;
+        // Parameter is relative to user's home dir
+        else if (confFile.charAt(0) == '~')
+            this.confFile = System.getProperty("user.home") + confFile.substring(1, confFile.length());
+        // Parameter was relative to cwd
+        else
+            this.confFile = System.getProperty("user.dir") + "/" + confFile;
+        // Filename of the backup file
+        String confBackupFileName = "conf_backup.jc";
+        this.confBackupFile = confFile.substring(0, confFile.lastIndexOf("/")) + confBackupFileName;
+        String conf;
+        try {
+            conf = readConfigFile(this.confFile);
+        } catch (Exception e){
+            logException(e);
+            throw e;
+        }
+        if (conf.equals(""))    // IOEx., NullPointerEx. or FileNotFoundEx. was thrown.
+            System.exit(1);
         this.configMap = parseConfig(conf);
     }
     /*
-     * CATEGORY - Find lines that have curly braces(Ie. "{General}") and take store their names
+     * CATEGORY - Find lines that have curly braces(Ie. "{General}") and store their names
      * ELEMENT - Find elements under each category and save their names(keys) and values
      * Return a 2D HashMap of categories and their elements: {CAT1: {k1: v1, k2: v2}, CAT2: {k3: v3, k4: v4}}
      */
@@ -56,8 +83,7 @@ public class Jconf {
     }
 
     /*
-    Takes in lines from config file under ONE category. Ie. "Colour = Black\nName = Jimi"
-    Returns {Colour=Black, Name=Jimi}
+    Takes in lines from config file under ONE category.
      */
     private HashMap<String, Object> parseKeyVal(String[] elements){
         // Not a char because it's going to be used in split()
@@ -96,6 +122,7 @@ public class Jconf {
             return arr;
 
         }
+        // TODO something else than try catch
         // Convert to Double
         try {
             if (item.contains("."))
@@ -114,36 +141,62 @@ public class Jconf {
         return item;
     }
 
+    private boolean fileExists(String file){
+        File f = new File(file);
+        if(f.exists() && !f.isDirectory()) {
+            return true;
+        }
+        return false;
+    }
+
     // Reads file 'file' to a String and returns it.
     // 'file' must be an abspath.
-    private static String readConfigFile(String file) {
+    private String readConfigFile(String file) throws NullPointerException, FileNotFoundException, IOException {
+        BufferedReader br = null;
+        if (!fileExists(file))
+            throw new FileNotFoundException("File " + file + " doesn't exist");
         try {
-            BufferedReader br = new BufferedReader(new FileReader(file));
+            // Read and write to temp file simultaneously
+            br = new BufferedReader(new FileReader(file));
             StringBuilder sb = new StringBuilder();
-            String line = br.readLine();
+            String line = br.readLine().trim();
+            if (line == null){
+                throw new NullPointerException("File is empty");
+            }
             while (line != null){
                 sb.append(line);
-                // '\n'
-                sb.append(System.lineSeparator());
+                sb.append(System.lineSeparator());  // '\n'
                 line = br.readLine();
             }
             return sb.toString();
-        } catch (FileNotFoundException fnfe){
-            System.out.println("File " + file + " does not exist!");
-            return "";
         } catch (IOException ioe) {
-            System.out.println("IO Exception caught. Check your permissions on file " + file + ".");
-            return "";
+            throw ioe;
+        } finally {
+            if (br != null) {
+                try {
+                    br.close();
+                } catch (IOException ioe) {
+                    throw ioe;
+                }
+            }
         }
     }
 
     // Modify a configuration item's value
-    public int set(String category, String element, String value){
-        if (makeBackup() != 0)
-            return 1;
+    // Return true if successful
+    boolean set(String category, String element, String value) throws IOException {
+        try {
+            makeBackup();
+        } catch(IOException ioe){
+            throw ioe;
+        }
+
         String brTmp = "config/br_tmp";
         BufferedReader br = null;
         BufferedWriter bw = null;
+
+        if (!fileExists(confFile))
+            throw new IOException("File disappeared during runtime!");
 
         try {
             br = new BufferedReader(new FileReader(this.confFile));
@@ -158,7 +211,6 @@ public class Jconf {
                             break;
                         }
                         if (line.startsWith(element + " =") || line.startsWith(element + "=")) {
-                            System.out.println("Key found");
                             line = element + " = " + value;
                         }
                         bw.write(line + "\n");
@@ -166,38 +218,58 @@ public class Jconf {
                 }
                 bw.write(line + "\n");
             }
-        } catch (FileNotFoundException fnfe) {
-            System.out.println("File not found! Reverting to backup.");
+        } catch (IOException ioe) {
             revertToBackup();
-            fnfe.printStackTrace();
-            return 1;
-        } catch (IOException e) {
-            System.out.println("IO Error. Reverting to backup.");
+            throw ioe;
+        } finally {
+            try {
+                br.close();
+                bw.close();
+            } catch (IOException ioe) {
+                revertToBackup();
+                throw ioe;
+            }
+        }
+        try {
+            Files.copy(Paths.get(brTmp), Paths.get(this.confFile), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ioe) {
             revertToBackup();
-            e.printStackTrace();
-            return 1;
+            throw ioe;
+        } finally {
+            (new File(brTmp)).delete();
+        }
+        return true;
+    }
+
+    // Create a backup of the config file before writing to it.
+    private int makeBackup() throws IOException {
+        try {
+            Files.copy(Paths.get(this.confFile), Paths.get(this.confBackupFile), StandardCopyOption.REPLACE_EXISTING);
+        } catch(IOException ioe){
+            logException(ioe);
+            throw ioe;
         }
         return 0;
     }
 
-    // Create a backup of the config file before writing to it.
-    private int makeBackup(){
-        try {
-            Files.copy(Paths.get(this.confFile), Paths.get(this.confBackupFile), StandardCopyOption.REPLACE_EXISTING);
-            return 0;
-        } catch(IOException ioe){
-            System.out.println("Could not make a backup of the configuration.");
-            return 1;
-        }
-    }
-
     // Overwrite conf file with the latest backup.
-    private void revertToBackup(){
+    private void revertToBackup() throws IOException{
         try {
             Files.copy(Paths.get(this.confBackupFile), Paths.get(this.confFile), StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (IOException ioe) {
+            logException(ioe);
+            throw ioe;
         }
 
+    }
+
+    private void logException(Exception e){
+        try {
+            Handler handler = new FileHandler("JCONF_LOG", 100, 100);
+            Logger.getAnonymousLogger().addHandler(handler);
+        } catch (Exception e2){
+        }
+        Logger logger = Logger.getAnonymousLogger();
+        logger.log(Level.FINEST, "exception thrown", e);
     }
 }
