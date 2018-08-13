@@ -1,4 +1,4 @@
-// This is a dummy class until the library is finished
+package com.jconf.jconf;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,10 +15,10 @@ public class Main {
         }
         HashMap conf = jc.get();
         try {
-            jc.set("General", "Limit", "6");
+            jc.set("General", "Width", String.valueOf(15));
+            jc.set("General", "Height", String.valueOf(15));
         } catch (Exception e){
-            ;
+            e.printStackTrace();
         }
-        System.out.println(jc.getVal("Not so general", "Balance"));
     }
 }

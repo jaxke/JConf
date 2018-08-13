@@ -1,0 +1,10 @@
+{
+  "General": [{
+    "Active": "true",
+    "Limit": 1.5
+  }],
+  "Not so general": [{
+    "Balance": 500,
+    "Names": ["Raikkonen", "Hamilton"]
+  }]
+}

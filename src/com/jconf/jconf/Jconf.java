@@ -1,3 +1,5 @@
+package com.jconf.jconf;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -10,17 +12,20 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import jdk.nashorn.internal.parser.JSONParser;
+import org.json.*;
+
 public class Jconf {
     private HashMap configMap;  // Configuration object de-serialized from the file.
     private String confFile;    // Absolute path to configuration file.
     private String confBackupFile;  // Abs path to the backup file
 
     // TODO This method is not needed?
-    HashMap get(){
+    public HashMap get(){
         return configMap;
     }
 
-    Object getVal(String category, String key) {
+    public Object getVal(String category, String key) {
         try {
             return ((HashMap<String, Object>) this.configMap.get(category)).get(key);
         } catch(NullPointerException npe){
@@ -28,19 +33,94 @@ public class Jconf {
         }
     }
 
+    // Modify a configuration item's value
+    // Return true if successful
+    public boolean set(String category, String element, String value) throws IOException {
+        try {
+            makeBackup();
+        } catch(IOException ioe){
+            throw ioe;
+        }
+
+        String brTmp = "br_tmp";
+        BufferedReader br = null;
+        BufferedWriter bw = null;
+
+        if (!fileExists(confFile))
+            throw new IOException("File disappeared during runtime!");
+
+        try {
+            br = new BufferedReader(new FileReader(this.confFile));
+            bw = new BufferedWriter(new FileWriter(brTmp));
+            String line;
+            boolean foundKey = false, foundCategory = false;
+            while ((line = br.readLine()) != null){
+                if (line.contains("{" + category + "}")){
+                    foundCategory = true;
+                    bw.write(line + "\n");
+                    while((line = br.readLine()) != null) {
+                        if (line.contains("{") && line.contains("}")) {
+                            // Next category encountered, stop looking for key
+                            break;
+                        }
+                        if (line.startsWith(element + " =") || line.startsWith(element + "=")) {
+                            foundKey = true;
+                            line = element + " = " + value;
+                        }
+                        bw.write(line + "\n");
+                    }
+                }
+                if (line != null && !line.equals("null") && !line.equals("")) {
+                    bw.write(line + "\n");
+                }
+                if (!foundCategory){
+                    throw new NullPointerException("Category " + category + " not found.");
+                } else if(!foundKey){
+                    throw new NullPointerException("Key " + element + " not found under category " + category + ".");
+                }
+            }
+        } catch (IOException ioe) {
+            revertToBackup();
+            throw ioe;
+        } finally {
+            try {
+                br.close();
+                if (bw != null)
+                    bw.close();
+            } catch (IOException ioe) {
+                revertToBackup();
+                throw ioe;
+            }
+        }
+        try {
+            Files.copy(Paths.get(brTmp), Paths.get(this.confFile), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ioe) {
+            revertToBackup();
+            throw ioe;
+        } finally {
+            (new File(brTmp)).delete();
+        }
+        return true;
+    }
+
     // Ambiguous "Exception" because the exc. type is resolved before hand.
     public Jconf(String confFile) throws Exception {
+        /*
+        JSONParser jp = new JSONParser();
+        JSONObject jo = (JSONObject) jp.parse(new FileReader(confFile));
+        */
+
         // Parameter was abs path
         if (confFile.charAt(0) == '/')
             this.confFile = confFile;
-        // Parameter is relative to user's home dir
+            // Parameter is relative to user's home dir
         else if (confFile.charAt(0) == '~')
             this.confFile = System.getProperty("user.home") + confFile.substring(1, confFile.length());
-        // Parameter was relative to cwd
+            // Parameter was relative to cwd
         else
             this.confFile = System.getProperty("user.dir") + "/" + confFile;
         // Filename of the backup file
-        String confBackupFileName = "conf_backup.jc";
+        String confBackupFileName = "jconf_backup";
         this.confBackupFile = confFile.substring(0, confFile.lastIndexOf("/")) + confBackupFileName;
         String conf;
         try {
@@ -56,8 +136,8 @@ public class Jconf {
      * ELEMENT - Find elements under each category and save their names(keys) and values
      * Return a 2D HashMap of categories and their elements: {CAT1: {k1: v1, k2: v2}, CAT2: {k3: v3, k4: v4}}
      */
-    private HashMap<String, HashMap<String, Object>> parseConfig(String fileContents){
-        HashMap<String, HashMap<String, Object>> conf = new HashMap<>();
+    private HashMap<String, HashMap<String, String>> parseConfig(String fileContents){
+        HashMap<String, HashMap<String, String>> conf = new HashMap<>();
         String fc[] = fileContents.split("\n");
         ArrayList<String> categories = new ArrayList<>();
         for (String line : fc){
@@ -74,13 +154,19 @@ public class Jconf {
             throw new NullPointerException("Configuration file is not of supported format.");
         }
         for (int i = 0; i < categories.size(); i++){
+            // Store values under wanted category.
             String aCategory[];
-            if (categories.size() != i+1) {     // If not last category
-                aCategory = fileContents.split(String.format("\\{%s}", categories.get(i)))[1].split(String.format("\\{%s}", categories.get(i + 1)))[0].split("\n");
-            } else {
-                aCategory = fileContents.split(String.format("\\{%s}", categories.get(i)))[1].split("\n");
+            try {
+                if (categories.size() != i + 1) {     // If not last category
+                    aCategory = fileContents.split(String.format("\\{%s}", categories.get(i)))[1].split(String.format("\\{%s}", categories.get(i + 1)))[0].split("\n");
+                } else {
+                    aCategory = fileContents.split(String.format("\\{%s}", categories.get(i)))[1].split("\n");
+                }
+                // Probably unclosed brackets in category
+            } catch (ArrayIndexOutOfBoundsException aie){
+                throw new ArrayIndexOutOfBoundsException("Could not find categories.");
             }
-            HashMap<String, Object> elements = parseKeyVal(aCategory);
+            HashMap<String, String> elements = parseKeyVal(aCategory);
             if (elements != null)
                 conf.put(categories.get(i), elements);
         }
@@ -90,10 +176,10 @@ public class Jconf {
     /*
     Takes in lines from config file under ONE category.
      */
-    private HashMap<String, Object> parseKeyVal(String[] elements){
+    private HashMap<String, String> parseKeyVal(String[] elements){
         // Not a char because it's going to be used in split()
         String delimiter = "=";
-        HashMap<String, Object> ret = new HashMap<>();
+        HashMap<String, String> ret = new HashMap<>();
         for (String element : elements) {
             if (element.equals(""))
                 continue;
@@ -102,8 +188,8 @@ public class Jconf {
             if (element.contains(delimiter)) {
                 String key = element.split(delimiter)[0].trim();
                 String val = element.split(delimiter)[1].trim();
-                Object convertedVal = convertType(val);
-                ret.put(key, convertedVal);
+                //Object convertedVal = convertType(val);
+                ret.put(key, val);
             }
         }
         if (ret.isEmpty())
@@ -112,6 +198,7 @@ public class Jconf {
             return ret;
     }
 
+    // TODO remove this feature completely, let implementation do the conversion
     private Object convertType(String item){
         // Convert to boolean
         if (item.equals("true") || item.equals("True")) {
@@ -155,7 +242,6 @@ public class Jconf {
     }
 
     // Reads file 'file' to a String and returns it.
-    // 'file' must be an abspath.
     private String readConfigFile(String file) throws NullPointerException, FileNotFoundException, IOException {
         BufferedReader br = null;
         if (!fileExists(file))
@@ -164,9 +250,11 @@ public class Jconf {
             // Read and write to temp file simultaneously
             br = new BufferedReader(new FileReader(file));
             StringBuilder sb = new StringBuilder();
-            String line = br.readLine().trim();
-            if (line == null){
-                throw new NullPointerException("File is empty");
+            String line;
+            try {
+                 line = br.readLine().trim();
+            } catch (NullPointerException npe){
+                throw new NullPointerException("File " + file + " is empty.");
             }
             while (line != null){
                 sb.append(line);
@@ -187,64 +275,7 @@ public class Jconf {
         }
     }
 
-    // Modify a configuration item's value
-    // Return true if successful
-    boolean set(String category, String element, String value) throws IOException {
-        try {
-            makeBackup();
-        } catch(IOException ioe){
-            throw ioe;
-        }
 
-        String brTmp = "config/br_tmp";
-        BufferedReader br = null;
-        BufferedWriter bw = null;
-
-        if (!fileExists(confFile))
-            throw new IOException("File disappeared during runtime!");
-
-        try {
-            br = new BufferedReader(new FileReader(this.confFile));
-            bw = new BufferedWriter(new FileWriter(brTmp));
-            String line;
-            while ((line = br.readLine()) != null){
-                if (line.contains("{" + category + "}")){
-                    bw.write(line + "\n");
-                    while((line = br.readLine()) != null) {
-                        if (line.contains("{") && line.contains("}")) {
-                            // Next category encountered, stop looking for key
-                            break;
-                        }
-                        if (line.startsWith(element + " =") || line.startsWith(element + "=")) {
-                            line = element + " = " + value;
-                        }
-                        bw.write(line + "\n");
-                    }
-                }
-                bw.write(line + "\n");
-            }
-        } catch (IOException ioe) {
-            revertToBackup();
-            throw ioe;
-        } finally {
-            try {
-                br.close();
-                bw.close();
-            } catch (IOException ioe) {
-                revertToBackup();
-                throw ioe;
-            }
-        }
-        try {
-            Files.copy(Paths.get(brTmp), Paths.get(this.confFile), StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException ioe) {
-            revertToBackup();
-            throw ioe;
-        } finally {
-            (new File(brTmp)).delete();
-        }
-        return true;
-    }
 
     // Create a backup of the config file before writing to it.
     private int makeBackup() throws IOException {

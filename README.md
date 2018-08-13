@@ -13,7 +13,7 @@ String confFile = "config/conf.jc";
 Jconf jc = new Jconf(confFile);  
 ```
   
-The API exposes two methods, namely get() and set(). Getter returns the configuration in the form of
+The API exposes methods: get(), getVal() and set(). Getter returns the configuration in the form of
 ```
 HashMap<String, HashMap<String, Object>>  
 ```
@@ -31,10 +31,15 @@ Balance = 500
 // Note the format of the list(also, this is a valid comment inside a config file)  
 Users = [Hamilton, Webber, Raikkonen]  
 ```
-jc.get() returns the following structure:  
+jc.get() returns the entire configuration HashMap:  
 ```
 [{Not so general={Users=[Ljava.lang.String;@4b67cf4d, Balance=500}, General={Active=true, Bandwidth=100M, Limit=1.8}}]
 // The array under "Users" is simply a String array of the listed users
+```
+The getVal() method returns the object value of the requested key:
+```
+jc.getVal("General", "Limit);
+>> 1.8
 ```
   
 The set() method allows the programmer to change values of settings during runtime.  

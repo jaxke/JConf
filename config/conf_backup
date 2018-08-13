@@ -1,8 +1,10 @@
 {General}
 Active = true
-Limit = 1.8
+Limit = 2.8
 Bandwidth = 100M
 
 {Not so general}
 Balance = 500
 Users = [Hamilton, Webber, Raikkonen]
+
+
