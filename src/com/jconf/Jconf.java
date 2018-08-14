@@ -1,4 +1,4 @@
-package com.jconf.jconf;
+package com.jconf;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -13,7 +13,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import jdk.nashorn.internal.parser.JSONParser;
-import org.json.*;
 
 public class Jconf {
     private HashMap configMap;  // Configuration object de-serialized from the file.
@@ -121,7 +120,7 @@ public class Jconf {
             this.confFile = System.getProperty("user.dir") + "/" + confFile;
         // Filename of the backup file
         String confBackupFileName = "jconf_backup";
-        this.confBackupFile = confFile.substring(0, confFile.lastIndexOf("/")) + confBackupFileName;
+        this.confBackupFile = this.confFile.substring(0, this.confFile.lastIndexOf("/")) + "/" + confBackupFileName;
         String conf;
         try {
             conf = readConfigFile(this.confFile);
